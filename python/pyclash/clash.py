@@ -1,5 +1,3 @@
-# -*- coding: future_fstrings -*-
-from __future__ import print_function
 import argparse
 import logging
 import uuid
@@ -12,6 +10,7 @@ import os
 from subprocess import call
 from threading import Lock
 from collections import namedtuple
+from typing import List
 
 import jinja2
 import googleapiclient.discovery
@@ -30,6 +29,7 @@ DEFAULT_JOB_CONFIG = {
     "subnetwork": "default-europe-west1",
     "machine_type": "n1-standard-1",
     "disk_image": {"project": "gce-uefi-images", "family": "cos-stable"},
+    "service_account": "default",
     "scopes": [
         "https://www.googleapis.com/auth/bigquery",
         "https://www.googleapis.com/auth/compute",
@@ -45,31 +45,31 @@ class JobConfigBuilder:
     def __init__(self, base_config=DEFAULT_JOB_CONFIG):
         self.config = copy.deepcopy(base_config)
 
-    def project_id(self, project_id):
+    def project_id(self, project_id: str):
         self.config["project_id"] = project_id
         return self
 
-    def image(self, image):
+    def image(self, image: str):
         self.config["image"] = image
         return self
 
-    def privileged(self, privileged):
+    def privileged(self, privileged: bool):
         self.config["privileged"] = privileged
         return self
 
-    def preemptible(self, preemptible):
+    def preemptible(self, preemptible: bool):
         self.config["preemptible"] = preemptible
         return self
 
-    def zone(self, zone):
+    def zone(self, zone: str):
         self.config["zone"] = zone
         return self
 
-    def region(self, region):
+    def region(self, region: str):
         self.config["region"] = region
         return self
 
-    def subnetwork(self, subnetwork):
+    def subnetwork(self, subnetwork: str):
         self.config["subnetwork"] = subnetwork
         return self
 
@@ -81,8 +81,12 @@ class JobConfigBuilder:
         self.config["disk_image"] = disk_image
         return self
 
-    def scopes(self, scopes):
+    def scopes(self, scopes: List[str]):
         self.config["scopes"] = scopes
+        return self
+
+    def service_account(self, service_account: str):
+        self.config["service_account"] = service_account
         return self
 
     def build(self):
@@ -218,6 +222,7 @@ class MachineConfig:
                 scopes=self.job_config["scopes"],
                 subnetwork=self.job_config["subnetwork"],
                 preemptible=self.job_config["preemptible"],
+                service_account=self.job_config["service_account"],
             )
         )
 
@@ -397,7 +402,9 @@ class Job:
         self.job_status_subscription = None
         try:
             self.job_status_topic = self._create_status_topic(publisher)
-            self.job_status_subscription = self._create_status_subscription(publisher, subscriber)
+            self.job_status_subscription = self._create_status_subscription(
+                publisher, subscriber
+            )
             self._create_instance_template(machine_config)
             self._create_managed_instance_group(1)
         except Exception as ex:
@@ -444,7 +451,9 @@ class Job:
             callback(data["status"])
             message.ack()
 
-        self.gcloud.get_subscriber().subscribe(self.job_status_subscription, pubsub_callback)
+        self.gcloud.get_subscriber().subscribe(
+            self.job_status_subscription, pubsub_callback
+        )
 
     def clean_up(self):
         """
@@ -503,9 +512,7 @@ class Job:
 
     def _create_status_subscription(self, publisher, subscriber):
         project_id = self.job_config["project_id"]
-        topics = [
-            path.name for path in publisher.list_topics(f"projects/{project_id}")
-        ]
+        topics = [path.name for path in publisher.list_topics(f"projects/{project_id}")]
 
         if self.job_status_topic not in topics:
             raise ValueError(f"Could not find status topic for job {self.name}")

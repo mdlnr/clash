@@ -10,7 +10,6 @@ install_requires = [
     "requests>=2.20.0",
     "google-cloud-pubsub>=0.38.0",
     "google-cloud-logging>=1.7.0",
-    "future-fstrings",
 ]
 
 tests_require = ["pytest", "docker", "mock"]
